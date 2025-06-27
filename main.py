@@ -1,8 +1,26 @@
-from fasthtml.common import fast_app, serve, Div, Table, Thead, Tbody, Tr, Th, Td, Style, Link, H1, P, Header, Titled
 from fastcore.all import *
 from tmdb_data import get_movies
+import os
+from fasthtml.oauth import OAuth
+from fasthtml.common import *
+from fasthtml.oauth import GitHubAppClient, GoogleAppClient
+from dotenv import load_dotenv
+load_dotenv()
 
-app, rt = fast_app(live=True, hdrs=[
+# cli_gh = GitHubAppClient(os.getenv("AUTH_CLIENT_ID"),
+#                          os.getenv("AUTH_CLIENT_SECRET"))
+
+cli_gg = GoogleAppClient(os.getenv("AUTH_CLIENT_ID_GG"),
+                         os.getenv("AUTH_CLIENT_SECRET_GG"))
+
+class Auth(OAuth):
+    def get_auth(self, info, ident, session, state):
+        if info.email in os.getenv('USERS_ALLOWED').split(','):
+            return RedirectResponse('/', status_code=303)
+        else:
+            return Div(P("Not logged in want jij ben Hopsakee niet."))
+
+app,rt = fast_app(live=True, hdrs=[
     # Include Pico CSS for nice default styling
     Link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"),
     # Add some custom styles
@@ -72,6 +90,9 @@ app, rt = fast_app(live=True, hdrs=[
     """)
 ])
 
+# oauth_gh = Auth(app, cli_gh)
+oauth_gg = Auth(app, cli_gg)
+
 def create_movie_table(df):
     "Create a styled HTML table from the movies dataframe"
     # Create table header with specific column classes
@@ -106,11 +127,13 @@ def create_movie_table(df):
     return Table(
         thead,
         Tbody(*rows),
-        cls="movie-table"
+        cls="movie-table",
     )
 
+
+
 @rt
-def index():
+def index(auth):
     return Titled("🎬 Netflix Movies",
         Div(P("Kies welke lijst je wil zien", style="color: #666; margin-top: 0"),
             Div(
@@ -119,8 +142,15 @@ def index():
                 style="display: flex; justify-content: center;"
             )
         ),
+        A('Log out', href='/logout'),
         id="index",
     )
+
+@rt
+def login(req):
+    return Div(P("Je bent niet ingelogd."), 
+        # A(P('Log in with GitHub'), href=oauth_gh.login_link(req)))
+        A(P('Log in with Google'), href=oauth_gg.login_link(req)))
 
 @rt
 def action(genre_id: int = 28, min_vote: int = 7):
