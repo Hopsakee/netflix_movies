@@ -54,7 +54,7 @@ def get_movies(genre_ids: Optional[list[int]] = None, no_genre_ids: Optional[lis
         df = df.drop(columns=['genre_ids'])
         df['vote_average'] = df['vote_average'].round(1)
         df['release_date'] = pd.to_datetime(df['release_date']).dt.year
-        df = df.sort_values('vote_average', ascending=False)
+        df = df.sort_values('vote_average', ascending=False)[:30]
 
         all_genres = set()
         for genres_list in df['genres']: all_genres.update(genres_list)
