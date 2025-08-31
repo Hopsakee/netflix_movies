@@ -71,9 +71,6 @@ app, rt = fast_app(live=True, hdrs=[
     """)
 ])
 
-# oauth_gh = Auth(app, cli_gh)
-oauth_gg = Auth(app, cli_gg)
-
 def create_movie_table(df):
     "Create a styled HTML table from the movies dataframe"
     # Create table header with specific column classes
