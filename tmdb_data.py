@@ -19,57 +19,53 @@ def get_genres() -> dict:
     headers = _create_headers()
     url_genres = "https://api.themoviedb.org/3/genre/movie/list?language=en"
     res_genres = requests.get(url_genres, headers=headers)
-    print(json.loads(res_genres.text))
     genre_dict = {genre['id']: genre['name'] for genre in json.loads(res_genres.text)['genres']}
     return genre_dict
 
-def get_movies(genre_id: Optional[int] = None, min_vote: Optional[float] = None, provider: int = 8):
+def get_movies(genre_ids: Optional[list[int]] = None, no_genre_ids: Optional[list[int]] = None, min_vote: Optional[float] = None, provider: int = 8):
     "Fetch movies filtered by genre, minimum vote average, and provider"
-    # Build the URL with filters
     headers = _create_headers()
+    genre_dict = get_genres()
     base_url = "https://api.themoviedb.org/3/discover/movie?include_adult=false&include_video=false&sort_by=vote_average.desc&vote_count.gte=1000&watch_region=NL"
-    
-    if genre_id is not None: base_url += f"&with_genres={genre_id}"
+    if genre_ids is not None and genre_ids != 0: genre_ids_str = '%2C'.join(map(str, genre_ids)); base_url += f"&with_genres={genre_ids_str}"
     if min_vote is not None: base_url += f"&vote_average.gte={min_vote}"
+    if no_genre_ids is not None and no_genre_ids != 0: no_genre_ids_str = '%2C'.join(map(str, no_genre_ids)); base_url += f"&without_genres={no_genre_ids_str}"
     base_url += f"&with_watch_providers={provider}"
-    
-    # Create genre lookup dictionary
-    genre_lookup = get_genres()
-    
-    # Fetch all pages
     all_results = []
     page = 1
-    total_pages = 1  # Will be updated after first request
-    
+    total_pages = 1
     while page <= total_pages:
         url = f"{base_url}&page={page}"
         response = requests.get(url, headers=headers)
         data = json.loads(response.text)
-        
         all_results.extend(data['results'])
         total_pages = data['total_pages']
         page += 1
-    
-    # Convert to dataframe
     df = pd.DataFrame(all_results)
+
+    if len(df) == 0:
+        all_genres = set()
+        df = pd.DataFrame(columns=['title', 'vote_average', 'release_date', 'genres', 'description'])
+    else:
+        if 'overview' in df.columns: df = df.rename(columns={'overview': 'description'})
+        cols_to_keep = ['title', 'vote_average', 'genre_ids', 'release_date', 'description']
+        df = df[cols_to_keep].copy()
+        df['genres'] = df['genre_ids'].apply(lambda ids: [genre_dict[gid] for gid in ids])
+        df = df.drop(columns=['genre_ids'])
+        df['vote_average'] = df['vote_average'].round(1)
+        df['release_date'] = pd.to_datetime(df['release_date']).dt.year
+        df = df.sort_values('vote_average', ascending=False)
+
+        all_genres = set()
+        for genres_list in df['genres']: all_genres.update(genres_list)
     
-    # Keep only needed columns
-    if 'overview' in df.columns: df = df.rename(columns={'overview': 'description'})
-    cols_to_keep = ['title', 'vote_average', 'genre_ids', 'release_date', 'description']
-    df = df[cols_to_keep].copy()
-    
-    # Convert genre IDs to names
-    df['genres'] = df['genre_ids'].apply(lambda ids: [genre_lookup[gid] for gid in ids])
-    df = df.drop(columns=['genre_ids'])
-    
-    # Format data
-    df['vote_average'] = df['vote_average'].round(1)
-    df['release_date'] = pd.to_datetime(df['release_date']).dt.year
-    
-    # Sort by vote average (descending)
-    df = df.sort_values('vote_average', ascending=False)
-    
-    return df
+    no_genres = {genre_dict[gid] for gid in no_genre_ids} if no_genre_ids else {}
+
+    mv_filter = {"min_rating": min_vote, "incl_genres": all_genres, "excl_genres": no_genres, "filt_genres": genre_ids}
+    print(len(df))
+
+
+    return df, mv_filter
 
 if __name__ == "__main__":
     df = get_movies()
