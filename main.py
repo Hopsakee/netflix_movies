@@ -1,7 +1,5 @@
 from fastcore.all import *
-from tmdb_data import get_movies, get_genres
-from fasthtml.common import *
-from monsterui.all import *
+from tmdb_data import get_movies
 
 app, rt = fast_app(live=True, hdrs=[
     # Include Pico CSS for nice default styling
@@ -73,6 +71,9 @@ app, rt = fast_app(live=True, hdrs=[
     """)
 ])
 
+# oauth_gh = Auth(app, cli_gh)
+oauth_gg = Auth(app, cli_gg)
+
 def create_movie_table(df):
     "Create a styled HTML table from the movies dataframe"
     # Create table header with specific column classes
@@ -107,15 +108,13 @@ def create_movie_table(df):
     return Table(
         thead,
         Tbody(*rows),
-        cls="movie-table"
+        cls="movie-table",
     )
 
-def genre_filter(genre_ids: int):
-    return Div()
-    
+
 
 @rt
-def index():
+def index(auth):
     return Titled("🎬 Netflix Movies",
         Div(P("Kies welke lijst je wil zien", style="color: #666; margin-top: 0"),
             Div(
@@ -125,8 +124,15 @@ def index():
                 style="display: flex; justify-content: center;"
             )
         ),
+        A('Log out', href='/logout'),
         id="index",
     )
+
+@rt
+def login(req):
+    return Div(P("Je bent niet ingelogd."), 
+        # A(P('Log in with GitHub'), href=oauth_gh.login_link(req)))
+        A(P('Log in with Google'), href=oauth_gg.login_link(req)))
 
 @rt
 def action(genre_id: int = 28, min_vote: int = 7):
