@@ -3,12 +3,10 @@ from tmdb_data import get_movies, get_genres
 import os
 from fasthtml.oauth import OAuth
 from fasthtml.common import *
+from monsterui.all import *
 from fasthtml.oauth import GoogleAppClient
 from dotenv import load_dotenv
 load_dotenv()
-
-# cli_gh = GitHubAppClient(os.getenv("AUTH_CLIENT_ID"),
-#                          os.getenv("AUTH_CLIENT_SECRET"))
 
 cli_gg = GoogleAppClient(os.getenv("AUTH_CLIENT_ID_GG"),
                          os.getenv("AUTH_CLIENT_SECRET_GG"))
@@ -91,7 +89,7 @@ app,rt = fast_app(live=True, hdrs=[
 ])
 
 # oauth_gh = Auth(app, cli_gh)
-oauth_gg = Auth(app, cli_gg)
+# oauth_gg = Auth(app, cli_gg)
 
 def create_movie_table(df):
     "Create a styled HTML table from the movies dataframe"
@@ -133,31 +131,32 @@ def create_movie_table(df):
 
 
 @rt
-def index(auth):
+# def index(auth):
+def index():
     return Titled("🎬 Netflix Movies",
         Div(P("Kies welke lijst je wil zien", style="color: #666; margin-top: 0"),
             Div(
                 Button("Best movies", hx_get=best.to(min_vote=7.8), hx_target="#index", hx_swap="innerHTML", hx_push_url="true", style="background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin-right: 10px;"),
-                Button("Action movies", hx_get=action.to(genre_id=28, min_vote=7), hx_target="#index", hx_swap="innerHTML", hx_push_url="true", style="background-color: #28a745; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;"),
+                Button("Action movies", hx_get=action.to(genre_ids=28, min_vote=7), hx_target="#index", hx_swap="innerHTML", hx_push_url="true", style="background-color: #28a745; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;"),
                 Button("Best movies with genre filter", hx_get=movies.to(min_vote=6), hx_target="#index", hx_swap="innerHTML", hx_push_url="true", style="background-color: #28a745; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;"),
                 style="display: flex; justify-content: center;"
             )
         ),
-        A('Log out', href='/logout'),
+        # A('Log out', href='/logout'),
         id="index",
     )
 
-@rt
-def login(req):
-    return Div(P("Je bent niet ingelogd."), 
-        # A(P('Log in with GitHub'), href=oauth_gh.login_link(req)))
-        A(P('Log in with Google'), href=oauth_gg.login_link(req)))
+# @rt
+# def login(req):
+#     return Div(P("Je bent niet ingelogd."), 
+#         # A(P('Log in with GitHub'), href=oauth_gh.login_link(req)))
+#         A(P('Log in with Google'), href=oauth_gg.login_link(req)))
 
 @rt
-def action(genre_id: int = 28, min_vote: int = 7):
+def action(genre_ids: list[int] = [28], min_vote: int = 7):
     try:
         # Get movies data with action genre (28) and minimum rating of 7
-        df, mv_filter = get_movies(genre_id=genre_id, min_vote=min_vote)
+        df, mv_filter = get_movies(genre_ids=genre_ids, min_vote=min_vote)
         
         # Create the page with the movie table
         return Div(Titled("Netflix Action Movies", hx_get=index.to(), hx_target="#index", hx_swap="innerHTML", hx_push_url="true", style="text-decoration: underline;"),
