@@ -164,7 +164,7 @@ def series(min_vote: float = 7, genre_ids: Optional[str] = "", without_genres: O
         all_genre_ids = list(genre_dict.keys())
         return Div(P("Genres filtered on: "),
                     Div(*[Div(genre_dict[gid], 
-                            hx_get=movies.to(min_vote=min_vote, 
+                            hx_get=series.to(min_vote=min_vote, 
                                             genre_ids=(genre_ids + "," if genre_ids else "") + str(gid) if gid not in selected_genre_ids 
                                                     else ','.join([str(g) for g in selected_genre_ids if g != gid]),
                                             without_genres=without_genres),
@@ -177,13 +177,13 @@ def series(min_vote: float = 7, genre_ids: Optional[str] = "", without_genres: O
     def Genres(include: bool, genres: list):
         if include:
             return Div(P("Genres available: "), 
-                    Div(*[Div(g, hx_get=movies.to(min_vote=min_vote, genre_ids=genre_ids,
+                    Div(*[Div(g, hx_get=series.to(min_vote=min_vote, genre_ids=genre_ids,
                                                   without_genres=(without_genres + "," if without_genres else "") + str(next(k for k,v in genre_dict.items() if v==g))),
                                                   hx_target="#series-container", hx_swap="innerHTML", hx_trigger="click", cls="genre-tag", style="cursor: pointer;") for g in genres],
                                                   style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px;"))
         else:
             return Div(P("Genres filtered out: "), 
-                    Div(*[Div(g, hx_get=movies.to(min_vote=min_vote, genre_ids=genre_ids,
+                    Div(*[Div(g, hx_get=series.to(min_vote=min_vote, genre_ids=genre_ids,
                                                   without_genres=','.join([gid for gid in (without_genres or "").split(',') if gid and int(gid) != next(k for k,v in genre_dict.items() if v==g)])),
                                                   hx_target="#series-container", hx_swap="innerHTML", hx_trigger="click", cls="genre-tag", style="cursor: pointer;") for g in genres],
                                                   style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px;"))
