@@ -1,5 +1,5 @@
 from fastcore.all import *
-from tmdb_data import get_movies, get_genres
+from tmdb_data import get_movies, get_series, get_genres_movies, get_genres_series
 import os
 from fasthtml.oauth import OAuth
 from fasthtml.common import *
@@ -91,7 +91,7 @@ app,rt = fast_app(live=True, hdrs=[
 # oauth_gh = Auth(app, cli_gh)
 # oauth_gg = Auth(app, cli_gg)
 
-def create_movie_table(df):
+def create_table(df):
     "Create a styled HTML table from the movies dataframe"
     # Create table header with specific column classes
     thead = Thead(Tr(
@@ -133,13 +133,16 @@ def create_movie_table(df):
 @rt
 # def index(auth):
 def index():
-    return Titled("🎬 Netflix Movies",
+    return Titled("🎬 Netflix Movies and Series",
         Div(P("Kies welke lijst je wil zien", style="color: #666; margin-top: 0"),
             Div(
-                Button("Best movies", hx_get=best.to(min_vote=7.8), hx_target="#index", hx_swap="innerHTML", hx_push_url="true", style="background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin-right: 10px;"),
-                Button("Action movies", hx_get=action.to(genre_ids=28, min_vote=7), hx_target="#index", hx_swap="innerHTML", hx_push_url="true", style="background-color: #28a745; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;"),
-                Button("Best movies with genre filter", hx_get=movies.to(min_vote=6), hx_target="#index", hx_swap="innerHTML", hx_push_url="true", style="background-color: #28a745; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;"),
-                style="display: flex; justify-content: center;"
+                Button("Best movies with genre filter",
+                    hx_get=movies.to(min_vote=7), hx_target="#index", hx_swap="innerHTML", hx_push_url="true",
+                    style="background-color: #28a745; padding: 10px 15px; cursor: pointer; font-size: 16px; width: auto;"),
+                Button("Best series with genre filter",
+                    hx_get=series.to(min_vote=7), hx_target="#index", hx_swap="innerHTML", hx_push_url="true",
+                    style="background-color: #6f42c1; padding: 10px 15px; cursor: pointer; font-size: 16px; width: auto;"),
+                style="display: flex; justify-content: center; gap: 10px;"
             )
         ),
         # A('Log out', href='/logout'),
@@ -152,62 +155,76 @@ def index():
 #         # A(P('Log in with GitHub'), href=oauth_gh.login_link(req)))
 #         A(P('Log in with Google'), href=oauth_gg.login_link(req)))
 
+
 @rt
-def action(genre_ids: list[int] = [28], min_vote: int = 7):
+def series(min_vote: float = 7, genre_ids: Optional[str] = "", without_genres: Optional[str] = ""):
+    genre_dict = get_genres_series()
+
+    def FilterGenres(selected_genre_ids: list):
+        all_genre_ids = list(genre_dict.keys())
+        return Div(P("Genres filtered on: "),
+                    Div(*[Div(genre_dict[gid], 
+                            hx_get=movies.to(min_vote=min_vote, 
+                                            genre_ids=(genre_ids + "," if genre_ids else "") + str(gid) if gid not in selected_genre_ids 
+                                                    else ','.join([str(g) for g in selected_genre_ids if g != gid]),
+                                            without_genres=without_genres),
+                            hx_target="#series-container", hx_swap="innerHTML", hx_trigger="click", 
+                            cls="genre-tag", 
+                            style=f"cursor: pointer; background-color: {'#d0d0d0' if gid in selected_genre_ids else 'white'}; color: {'black' if gid in selected_genre_ids else '#999'};") 
+                        for gid in sorted(all_genre_ids, key=lambda x: genre_dict[x])], 
+                        style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px;"))
+
+    def Genres(include: bool, genres: list):
+        if include:
+            return Div(P("Genres available: "), 
+                    Div(*[Div(g, hx_get=movies.to(min_vote=min_vote, genre_ids=genre_ids,
+                                                  without_genres=(without_genres + "," if without_genres else "") + str(next(k for k,v in genre_dict.items() if v==g))),
+                                                  hx_target="#series-container", hx_swap="innerHTML", hx_trigger="click", cls="genre-tag", style="cursor: pointer;") for g in genres],
+                                                  style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px;"))
+        else:
+            return Div(P("Genres filtered out: "), 
+                    Div(*[Div(g, hx_get=movies.to(min_vote=min_vote, genre_ids=genre_ids,
+                                                  without_genres=','.join([gid for gid in (without_genres or "").split(',') if gid and int(gid) != next(k for k,v in genre_dict.items() if v==g)])),
+                                                  hx_target="#series-container", hx_swap="innerHTML", hx_trigger="click", cls="genre-tag", style="cursor: pointer;") for g in genres],
+                                                  style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px;"))
+
+
     try:
-        # Get movies data with action genre (28) and minimum rating of 7
-        df, mv_filter = get_movies(genre_ids=genre_ids, min_vote=min_vote)
-        
-        # Create the page with the movie table
-        return Div(Titled("Netflix Action Movies", hx_get=index.to(), hx_target="#index", hx_swap="innerHTML", hx_push_url="true", style="text-decoration: underline;"),
-            Div(
+        filter_out_genre_ids = [int(gid) for gid in (without_genres or "").split(',') if gid]
+        filter_on_genre_ids = [int(gid) for gid in (genre_ids or "").split(',') if gid]
+        df, sr_filter = get_series(genre_ids=filter_on_genre_ids, no_genre_ids=filter_out_genre_ids, min_vote=min_vote)
+
+        selected_genre_ids = sorted(sr_filter['filt_genres'])
+        sorted_incl_genres = sorted(sr_filter['incl_genres'])
+        sorted_excl_genres = sorted(sr_filter['excl_genres'])
+        return Div(
+            Div(Titled("Netflix Series", hx_get=index.to(), hx_target="#index", hx_swap="innerHTML", hx_push_url="true", style="text-decoration: underline; cursor: pointer;")),
+            DivFullySpaced(
                 Header(
-                    H1("🎬 Top Action Movies", style="margin-bottom: 0.5rem"),
-                    P(f"Sorted by rating, filtered for action movies with rating ≥ {min_vote}/10", 
+                    H1("🎬 Top Rated Series", style="margin-bottom: 0.5rem"),
+                    P(f"Sorted by rating, filtered for series with rating ≥ {min_vote}/10", 
                       style="color: #666; margin-top: 0"),
                     cls="header"
                 ),
-                create_movie_table(df),
-                cls="container"
-            )
+                FilterGenres(selected_genre_ids),
+                Genres(False, sorted_excl_genres)),
+                Genres(True, sorted_incl_genres),
+            Div(
+                create_table(df),
+                cls="container"),
+            id="series-container"
         )
     except Exception as e:
         return Div(
             H1("Error", style="color: #dc3545"),
             P(f"An error occurred: {str(e)}", style="color: #6c757d"),
-            cls="container"
+            cls="container",
+            id="series-container"
         )
-
-@rt
-def best(min_vote: float = 7.8):
-    try:
-        # Get movies data with minimum rating of 7
-        df, mv_filter = get_movies(min_vote=min_vote)
-        
-        # Create the page with the movie table
-        return Div(Titled("Netflix Best Movies", hx_get=index.to(), hx_target="#index", hx_swap="innerHTML", hx_push_url="true", style="text-decoration: underline;"),
-            Div(
-                Header(
-                    H1("🎬 Top Best Movies", style="margin-bottom: 0.5rem"),
-                    P(f"Sorted by rating, filtered for movies with rating ≥ {min_vote}/10", 
-                      style="color: #666; margin-top: 0"),
-                    cls="header"
-                ),
-                create_movie_table(df),
-                cls="container"
-            )
-        )
-    except Exception as e:
-        return Div(
-            H1("Error", style="color: #dc3545"),
-            P(f"An error occurred: {str(e)}", style="color: #6c757d"),
-            cls="container"
-        )
-
 
 @rt
 def movies(min_vote: float = 7, genre_ids: Optional[str] = "", without_genres: Optional[str] = ""):
-    genre_dict = get_genres()
+    genre_dict = get_genres_movies()
 
     def FilterGenres(selected_genre_ids: list):
         all_genre_ids = list(genre_dict.keys())
@@ -247,7 +264,7 @@ def movies(min_vote: float = 7, genre_ids: Optional[str] = "", without_genres: O
         sorted_incl_genres = sorted(mv_filter['incl_genres'])
         sorted_excl_genres = sorted(mv_filter['excl_genres'])
         return Div(
-            Div(Titled("Netflix Movies", hx_get=index.to(), hx_target="#index", hx_swap="innerHTML", hx_push_url="true", style="text-decoration: underline;")),
+            Div(Titled("Netflix Movies", hx_get=index.to(), hx_target="#index", hx_swap="innerHTML", hx_push_url="true", style="text-decoration: underline; cursor: pointer;")),
             DivFullySpaced(
                 Header(
                     H1("🎬 Top Rated Movies", style="margin-bottom: 0.5rem"),
@@ -259,7 +276,7 @@ def movies(min_vote: float = 7, genre_ids: Optional[str] = "", without_genres: O
                 Genres(False, sorted_excl_genres)),
                 Genres(True, sorted_incl_genres),
             Div(
-                create_movie_table(df),
+                create_table(df),
                 cls="container"),
             id="movies-container"
         )
