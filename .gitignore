@@ -1,3 +1,20 @@
+# Secrets and runtime state — never commit.
 .env
+.env.*
+!.env.example
 plash.env
-__pycache__
+.sesskey
+.plash
+
+# Python build / cache artifacts.
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editor / OS junk.
+.DS_Store
+.idea/
+*.swp
