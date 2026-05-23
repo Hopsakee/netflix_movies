@@ -144,8 +144,9 @@ def _genre_id_for_name(genre_dict: dict, name: str) -> Optional[int]:
 
 
 def _render_list(route, container_id: str, list_title: str, fetch, genre_dict: dict,
-                 min_vote: float, genre_ids: str, without_genres: str):
-    "Shared renderer for /movies and /series."
+                 min_vote: float, genre_ids: str, without_genres: str,
+                 show_meta: bool = True):
+    "Shared renderer for /movies and /series. `show_meta` toggles the Metascore column (movies only)."
     filter_on = _parse_id_list(genre_ids)
     filter_out = _parse_id_list(without_genres)
     filter_on = [gid for gid in filter_on if gid in genre_dict]
@@ -231,76 +232,22 @@ def _render_list(route, container_id: str, list_title: str, fetch, genre_dict: d
             Genres(False, sorted_excl_genres),
         ),
         Genres(True, sorted_incl_genres),
-        Div(create_table(df), cls="container"),
+        Div(create_table(df, show_meta=show_meta), cls="container"),
         id=container_id,
     )
 
 
 @rt
 def series(min_vote: float = 7, genre_ids: Optional[str] = "", without_genres: Optional[str] = ""):
-    genre_dict = get_genres_series()
-
-    def FilterGenres(selected_genre_ids: list):
-        all_genre_ids = list(genre_dict.keys())
-        return Div(P("Genres filtered on: "),
-                    Div(*[Div(genre_dict[gid], 
-                            hx_get=series.to(min_vote=min_vote, 
-                                            genre_ids=(genre_ids + "," if genre_ids else "") + str(gid) if gid not in selected_genre_ids 
-                                                    else ','.join([str(g) for g in selected_genre_ids if g != gid]),
-                                            without_genres=without_genres),
-                            hx_target="#series-container", hx_swap="innerHTML", hx_trigger="click", 
-                            cls="genre-tag", 
-                            style=f"cursor: pointer; background-color: {'#d0d0d0' if gid in selected_genre_ids else 'white'}; color: {'black' if gid in selected_genre_ids else '#999'};") 
-                        for gid in sorted(all_genre_ids, key=lambda x: genre_dict[x])], 
-                        style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px;"))
-
-    def Genres(include: bool, genres: list):
-        if include:
-            return Div(P("Genres available: "), 
-                    Div(*[Div(g, hx_get=series.to(min_vote=min_vote, genre_ids=genre_ids,
-                                                  without_genres=(without_genres + "," if without_genres else "") + str(next(k for k,v in genre_dict.items() if v==g))),
-                                                  hx_target="#series-container", hx_swap="innerHTML", hx_trigger="click", cls="genre-tag", style="cursor: pointer;") for g in genres],
-                                                  style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px;"))
-        else:
-            return Div(P("Genres filtered out: "), 
-                    Div(*[Div(g, hx_get=series.to(min_vote=min_vote, genre_ids=genre_ids,
-                                                  without_genres=','.join([gid for gid in (without_genres or "").split(',') if gid and int(gid) != next(k for k,v in genre_dict.items() if v==g)])),
-                                                  hx_target="#series-container", hx_swap="innerHTML", hx_trigger="click", cls="genre-tag", style="cursor: pointer;") for g in genres],
-                                                  style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px;"))
-
-
     try:
-        filter_out_genre_ids = [int(gid) for gid in (without_genres or "").split(',') if gid]
-        filter_on_genre_ids = [int(gid) for gid in (genre_ids or "").split(',') if gid]
-        df, sr_filter = get_series(genre_ids=filter_on_genre_ids, no_genre_ids=filter_out_genre_ids, min_vote=min_vote)
-
-        selected_genre_ids = sorted(sr_filter['filt_genres'])
-        sorted_incl_genres = sorted(sr_filter['incl_genres'])
-        sorted_excl_genres = sorted(sr_filter['excl_genres'])
-        return Div(
-            Div(Titled("Netflix Series", hx_get=index.to(), hx_target="#index", hx_swap="innerHTML", hx_push_url="true", style="text-decoration: underline; cursor: pointer;")),
-            DivFullySpaced(
-                Header(
-                    H1("🎬 Top Rated Series", style="margin-bottom: 0.5rem"),
-                    P(f"Filtered for series with TMDB rating ≥ {min_vote}/10. Ratings shown are from IMDb.", 
-                      style="color: #666; margin-top: 0"),
-                    cls="header"
-                ),
-                FilterGenres(selected_genre_ids),
-                Genres(False, sorted_excl_genres)),
-                Genres(True, sorted_incl_genres),
-            Div(
-                create_table(df, show_meta=False),
-                cls="container"),
-            id="series-container"
-        )
-    except Exception as e:
-        return Div(
-            H1("Error", style="color: #dc3545"),
-            P(f"An error occurred: {str(e)}", style="color: #6c757d"),
-            cls="container",
-            id="series-container"
-        )
+        return _render_list(series, "series-container", "Netflix Series",
+                            get_series, get_genres_series(),
+                            min_vote, genre_ids or "", without_genres or "",
+                            show_meta=False)
+    except Exception:
+        import logging
+        logging.exception("series route failed")
+        return _error_panel("series-container")
 
 
 @rt
@@ -308,7 +255,8 @@ def movies(min_vote: float = 7, genre_ids: Optional[str] = "", without_genres: O
     try:
         return _render_list(movies, "movies-container", "Netflix Movies",
                             get_movies, get_genres_movies(),
-                            min_vote, genre_ids or "", without_genres or "")
+                            min_vote, genre_ids or "", without_genres or "",
+                            show_meta=True)
     except Exception:
         import logging
         logging.exception("movies route failed")
