@@ -22,12 +22,10 @@ MIN_RATING = 0.0
 MAX_RATING = 10.0
 
 PICO_CSS = "https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css"
-# TODO: pin Pico to a known release and add an SRI integrity hash. Generate via:
-#   curl -sL https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css | openssl dgst -sha384 -binary | openssl base64 -A
-# Then add integrity="sha384-..." crossorigin="anonymous" below.
+PICO_SRI = "sha384-7P0NVe9LPDbUCAF+fH2R8Egwz1uqNH83Ns/bfJY0fN2XCDBMUI2S9gGzIOIRBKsA"
 
 app, rt = fast_app(live=False, hdrs=[
-    Link(rel="stylesheet", href=PICO_CSS),
+    Link(rel="stylesheet", href=PICO_CSS, integrity=PICO_SRI, crossorigin="anonymous"),
     Style("""
         .movie-table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9em; box-shadow: 0 0 20px rgba(0,0,0,0.1); table-layout: fixed; }
         .movie-table th.title-col { width: 30%; }
@@ -49,7 +47,7 @@ app, rt = fast_app(live=False, hdrs=[
 
 
 def _parse_id_list(raw: Optional[str]) -> list[int]:
-    "Parse a user-supplied comma-separated id list. Drop non-numeric entries. Cap length."
+    "Parse a user-supplied comma-separated id list. Drop non-numeric / non-positive entries. Cap length."
     if not raw:
         return []
     out: list[int] = []
@@ -58,9 +56,12 @@ def _parse_id_list(raw: Optional[str]) -> list[int]:
         if not tok:
             continue
         try:
-            out.append(int(tok))
+            val = int(tok)
         except ValueError:
             continue
+        if val <= 0:
+            continue
+        out.append(val)
         if len(out) >= MAX_GENRE_IDS:
             break
     return out
@@ -145,7 +146,9 @@ def _render_list(route, container_id: str, list_title: str, fetch, genre_dict: d
 
     df, sr_filter = fetch(genre_ids=filter_on, no_genre_ids=filter_out, min_vote=mv)
 
-    selected_genre_ids = sorted(sr_filter['filt_genres'] or [])
+    # Use the validated `filter_on` list for the selected-state, NOT the raw `filt_genres` from sr_filter —
+    # stale ids from bookmarks must not poison the toggle-off URL builder below.
+    selected_genre_ids = sorted(filter_on)
     sorted_incl_genres = sorted(sr_filter['incl_genres'])
     sorted_excl_genres = sorted(sr_filter['excl_genres'])
 

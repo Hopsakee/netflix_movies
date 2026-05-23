@@ -132,10 +132,10 @@ def get_series(genre_ids: Optional[list[int]] = None, no_genre_ids: Optional[lis
         cols = ["name", "vote_average", "genre_ids", "first_air_date", "description"]
         df = df[cols].copy()
         df["genres"] = df["genre_ids"].apply(lambda ids: [genre_dict.get(gid, "Unknown") for gid in ids])
-        df = df.drop(columns=["genre_ids"])
         df["vote_average"] = df["vote_average"].round(1)
         df["release_date"] = pd.to_datetime(df["first_air_date"], errors="coerce").dt.year
         df["title"] = df["name"]
+        df = df.drop(columns=["genre_ids", "first_air_date", "name"])
         df = df.sort_values("vote_average", ascending=False)[:TOP_RESULTS]
         all_genres = set()
         for gs in df["genres"]:
