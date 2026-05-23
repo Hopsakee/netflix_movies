@@ -1,4 +1,5 @@
 from fastcore.all import *
+import pandas as pd
 from tmdb_data import get_movies, get_series, get_genres_movies, get_genres_series
 import os
 from fasthtml.oauth import OAuth
@@ -96,12 +97,17 @@ def create_table(df):
     # Create table header with specific column classes
     thead = Thead(Tr(
         Th('Title'),
-        Th('Rating'),
+        Th('IMDb'),
+        Th('Meta'),
         Th('Year'),
         Th('Genres', cls='genre-col'),
         Th('Description', cls='desc-col')
     ))
-    
+
+    def _missing(v): return v is None or (isinstance(v, float) and pd.isna(v))
+    def fmt_imdb(v): return "—" if _missing(v) else f"⭐ {v}"
+    def fmt_meta(v): return "—" if _missing(v) else f"🎯 {int(v)}"
+
     # Create table rows
     rows = []
     for _, row in df.iterrows():
@@ -110,11 +116,12 @@ def create_table(df):
             *[Div(g, cls="genre-tag") for g in row['genres']],
             style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px;"
         )
-        
+
         # Create table row
         rows.append(Tr(
             Td(row['title'], style="font-weight: bold"),
-            Td(f"⭐ {row['vote_average']}"),
+            Td(fmt_imdb(row.get('imdb_rating'))),
+            Td(fmt_meta(row.get('metascore'))),
             Td(row['release_date']),
             Td(genres, style="padding: 8px"),
             Td(row['description'], style="white-space: normal; text-overflow: clip;"),
