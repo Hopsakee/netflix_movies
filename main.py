@@ -272,4 +272,7 @@ def movies(min_vote: float = 7, genre_ids: Optional[str] = "", without_genres: O
 
 
 if __name__ == "__main__":
-    serve(port=8081, reload=False)
+    # Port comes from the deploy config, matching hopswiki-web and pkw-web
+    # (app/config.py in both). The explicit default keeps a missing APP_PORT
+    # from falling through to fasthtml's own 5001, which Caddy does not dial.
+    serve(port=int(os.getenv("APP_PORT", "8081")), reload=False)
