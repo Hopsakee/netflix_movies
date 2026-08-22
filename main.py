@@ -264,4 +264,4 @@ def movies(min_vote: float = 7, genre_ids: Optional[str] = "", without_genres: O
 
 
 if __name__ == "__main__":
-    serve()
+    serve(port=8081, reload=False)
