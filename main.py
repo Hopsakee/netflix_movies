@@ -17,6 +17,14 @@ from tmdb_data import get_movies, get_series, get_genres_movies, get_genres_seri
 
 load_dotenv()
 
+# Session signing key, passed explicitly. Without it FastHTML's `get_key` falls back to
+# creating a `.sesskey` file in the working directory (fasthtml/core.py), and /app is
+# root-owned while the container runs as `appuser` — that write raises PermissionError
+# during import and crash-loops the container. Fail loud, as tmdb_data.py does.
+SESSION_SECRET = os.getenv("SESSION_SECRET")
+if not SESSION_SECRET:
+    raise RuntimeError("SESSION_SECRET is not set. Refusing to start without a session key.")
+
 # Hard limits on user-supplied query parameters. Anything exceeding these is rejected at the route boundary.
 MAX_GENRE_IDS = 20
 MIN_RATING = 0.0
@@ -25,7 +33,7 @@ MAX_RATING = 10.0
 PICO_CSS = "https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css"
 PICO_SRI = "sha384-7P0NVe9LPDbUCAF+fH2R8Egwz1uqNH83Ns/bfJY0fN2XCDBMUI2S9gGzIOIRBKsA"
 
-app, rt = fast_app(live=False, hdrs=[
+app, rt = fast_app(live=False, secret_key=SESSION_SECRET, hdrs=[
     Link(rel="stylesheet", href=PICO_CSS, integrity=PICO_SRI, crossorigin="anonymous"),
     Style("""
         .movie-table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9em; box-shadow: 0 0 20px rgba(0,0,0,0.1); table-layout: fixed; }
