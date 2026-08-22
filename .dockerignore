@@ -1,0 +1,18 @@
+# Keep the build context to source only. `COPY . .` otherwise ships the
+# host-built .venv (205MB) into /app, where it lands right before `uv sync`
+# and shadows the venv the image is supposed to build for its own platform.
+.venv/
+__pycache__/
+*.pyc
+
+# Never bake a populated secrets file into an image layer (.env.example warns
+# about exactly this).
+.env
+
+# Dev-only noise. images/ is deliberately NOT excluded — fasthtml's default
+# static_path is the app root, so it serves those files.
+.git/
+.github/
+.vscode/
+.claude/
+Plans/
