@@ -3,6 +3,7 @@
 All calls are bounded (timeout, page cap), cached where the response is static (genre lists),
 and fail-loud on missing credentials.
 """
+import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -17,6 +18,8 @@ from dotenv import load_dotenv
 from imdb_data import get_ratings_by_id
 
 load_dotenv()
+
+log = logging.getLogger(__name__)
 
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 if not TMDB_API_KEY:
@@ -101,7 +104,8 @@ def _get_imdb_id(tmdb_id: int, kind: str) -> Optional[str]:
         r = requests.get(url, headers=_headers(), timeout=HTTP_TIMEOUT)
         r.raise_for_status()
         return r.json().get("imdb_id") or None
-    except Exception:
+    except Exception as e:
+        log.warning("TMDB external_ids lookup failed for %s/%s: %r", kind, tmdb_id, e)
         return None
 
 

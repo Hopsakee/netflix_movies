@@ -33,24 +33,40 @@ MAX_RATING = 10.0
 PICO_CSS = "https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css"
 PICO_SRI = "sha384-7P0NVe9LPDbUCAF+fH2R8Egwz1uqNH83Ns/bfJY0fN2XCDBMUI2S9gGzIOIRBKsA"
 
+# Warm Sparse Minimalist — dark, warm, spacious, sans-serif, sharp corners, terse copy.
+# Palette + design principles from the tasteID profile (Braincave d6.51.02): progressive
+# disclosure, strong hierarchy, trust the user. Colors match that profile's own fingerprint SVG.
+JF_BG = "#17151a"
+JF_SURFACE = "#221f1c"
+JF_SURFACE_ALT = "#2a2622"
+JF_TEXT = "#e8e4de"
+JF_MUTED = "#8a8680"
+JF_ACCENT = "#c8a46e"
+JF_ACCENT_INK = "#17151a"
+JF_BORDER = "rgba(200, 164, 110, 0.16)"
+JF_DANGER = "#e0796a"
+
 app, rt = fast_app(live=False, secret_key=SESSION_SECRET, hdrs=[
     Link(rel="stylesheet", href=PICO_CSS, integrity=PICO_SRI, crossorigin="anonymous"),
-    Style("""
-        .movie-table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9em; box-shadow: 0 0 20px rgba(0,0,0,0.1); table-layout: fixed; }
-        .movie-table th.title-col { width: 30%; }
-        .movie-table th.rating-col { width: 5%; }
-        .movie-table th.year-col { width: 5%; }
-        .movie-table th.genre-col { width: 10%; }
-        .movie-table th.desc-col { width: 50%; }
-        .movie-table thead tr { background-color: #2c3e50; color: #fff; text-align: left; }
-        .movie-table th, .movie-table td { padding: 10px 12px; }
-        .movie-table tbody tr { border-bottom: 1px solid #ddd; }
-        .movie-table tbody tr:nth-of-type(even) { background-color: #f3f3f3; }
-        .movie-table tbody tr:last-of-type { border-bottom: 2px solid #2c3e50; }
-        .movie-table tbody tr:hover { background-color: #e1f5fe; cursor: pointer; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
-        .header { margin: 2rem 0; text-align: center; }
-        .genre-tag { display: inline-block; background: #e0e0e0; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; margin: 2px; }
+    Style(f"""
+        body {{ background: {JF_BG}; color: {JF_TEXT}; }}
+        a {{ color: {JF_ACCENT}; }}
+        * {{ border-radius: 0 !important; }}
+        .container {{ max-width: 1200px; margin: 0 auto; padding: 0 1.5rem; }}
+        .header {{ margin: 2.5rem 0 1.5rem; text-align: center; }}
+        .movie-table {{ width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: 0.92em; table-layout: fixed; background: {JF_SURFACE}; }}
+        .movie-table th.title-col {{ width: 30%; }}
+        .movie-table th.rating-col {{ width: 5%; }}
+        .movie-table th.year-col {{ width: 5%; }}
+        .movie-table th.genre-col {{ width: 10%; }}
+        .movie-table th.desc-col {{ width: 50%; }}
+        .movie-table thead tr {{ background: {JF_BG}; color: {JF_ACCENT}; text-align: left; border-bottom: 2px solid {JF_ACCENT}; }}
+        .movie-table th, .movie-table td {{ padding: 14px 16px; }}
+        .movie-table tbody tr {{ border-bottom: 1px solid {JF_BORDER}; }}
+        .movie-table tbody tr:nth-of-type(even) {{ background-color: {JF_SURFACE_ALT}; }}
+        .movie-table tbody tr:last-of-type {{ border-bottom: 2px solid {JF_ACCENT}; }}
+        .movie-table tbody tr:hover {{ background-color: rgba(200, 164, 110, 0.08); cursor: pointer; }}
+        .genre-tag {{ display: inline-block; background: transparent; border: 1px solid {JF_BORDER}; color: {JF_MUTED}; padding: 3px 10px; font-size: 0.8em; margin: 2px; }}
     """)
 ])
 
@@ -86,8 +102,8 @@ def _validate_rating(min_vote: float) -> float:
 def _error_panel(container_id: str) -> "FT":
     "Generic error panel — never includes exception detail."
     return Div(
-        H1("Something went wrong", style="color: #dc3545"),
-        P("Could not load the list right now. Please try again in a moment.", style="color: #6c757d"),
+        H1("Something went wrong", style=f"color: {JF_DANGER}"),
+        P("Could not load the list right now. Please try again in a moment.", style=f"color: {JF_MUTED}"),
         cls="container",
         id=container_id,
     )
@@ -131,15 +147,15 @@ def index():
     return Titled(
         "🎬 Netflix Movies and Series",
         Div(
-            P("Kies welke lijst je wil zien", style="color: #666; margin-top: 0"),
+            P("Kies welke lijst je wil zien", style=f"color: {JF_MUTED}; margin-top: 0"),
             Div(
                 Button("Best movies with genre filter",
                        hx_get=movies.to(min_vote=7), hx_target="#index", hx_swap="innerHTML", hx_push_url="true",
-                       style="background-color: #28a745; padding: 10px 15px; cursor: pointer; font-size: 16px; width: auto;"),
+                       style=f"background-color: {JF_ACCENT}; color: {JF_ACCENT_INK}; border: none; padding: 12px 20px; cursor: pointer; font-size: 16px; width: auto;"),
                 Button("Best series with genre filter",
                        hx_get=series.to(min_vote=7), hx_target="#index", hx_swap="innerHTML", hx_push_url="true",
-                       style="background-color: #6f42c1; padding: 10px 15px; cursor: pointer; font-size: 16px; width: auto;"),
-                style="display: flex; justify-content: center; gap: 10px;",
+                       style=f"background-color: transparent; color: {JF_ACCENT}; border: 1px solid {JF_ACCENT}; padding: 12px 20px; cursor: pointer; font-size: 16px; width: auto;"),
+                style="display: flex; justify-content: center; gap: 16px; margin-top: 1rem;",
             ),
         ),
         id="index",
@@ -183,7 +199,9 @@ def _render_list(route, container_id: str, list_title: str, fetch, genre_dict: d
                       ),
                       hx_target=f"#{container_id}", hx_swap="innerHTML", hx_trigger="click",
                       cls="genre-tag",
-                      style=f"cursor: pointer; background-color: {'#d0d0d0' if gid in selected_ids else 'white'}; color: {'black' if gid in selected_ids else '#999'};")
+                      style=(f"cursor: pointer; background-color: {JF_ACCENT}; color: {JF_ACCENT_INK}; border-color: {JF_ACCENT};"
+                             if gid in selected_ids else
+                             f"cursor: pointer; background-color: transparent; color: {JF_MUTED}; border-color: {JF_BORDER};"))
                   for gid in sorted(all_ids, key=lambda x: genre_dict[x])],
                 style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px;",
             ),
@@ -232,8 +250,8 @@ def _render_list(route, container_id: str, list_title: str, fetch, genre_dict: d
         DivFullySpaced(
             Header(
                 H1(f"🎬 Top Rated {list_title.split()[-1]}", style="margin-bottom: 0.5rem"),
-                P(f"Filtered for items with TMDB rating ≥ {mv}/10. Ratings shown are from IMDb.",
-                  style="color: #666; margin-top: 0"),
+                P(f"TMDB rating ≥ {mv}/10 · ratings via IMDb",
+                  style=f"color: {JF_MUTED}; margin-top: 0"),
                 cls="header",
             ),
             FilterGenres(selected_genre_ids),
