@@ -66,8 +66,8 @@ app, rt = fast_app(live=False, secret_key=SESSION_SECRET, hdrs=[
         .movie-table th.year-col {{ width: 6%; }}
         .movie-table th.genre-col {{ width: 12%; }}
         .movie-table th.desc-col {{ width: 40%; }}
-        .movie-table thead tr {{ background: {JF_ACCENT} !important; }}
-        .movie-table thead th {{ color: {JF_ACCENT_INK} !important; text-align: left; font-weight: 600; }}
+        .movie-table thead tr th {{ background: {JF_ACCENT} !important; background-color: {JF_ACCENT} !important;
+                                    color: {JF_ACCENT_INK} !important; text-align: left; font-weight: 600; }}
         .movie-table th, .movie-table td {{ padding: 12px 14px; color: {JF_TEXT}; }}
         .movie-table tbody tr {{ border-bottom: 1px solid {JF_BORDER}; }}
         .movie-table tbody tr:nth-of-type(even) {{ background-color: {JF_SURFACE_ALT}; }}
