@@ -6,7 +6,7 @@ Small FastHTML app that lists the top-rated movies and series on Netflix-NL via 
 
 ```bash
 uv sync
-cp .env.example .env  # then put your TMDB Bearer token in .env
+cp .env.example .env  # then put your TMDB Bearer token and OMDB API key in .env
 uv run python main.py
 ```
 

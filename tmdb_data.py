@@ -15,7 +15,7 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 
-from imdb_data import get_ratings_by_id
+from omdb_data import get_ratings_by_imdb_id
 
 load_dotenv()
 
@@ -109,29 +109,29 @@ def _get_imdb_id(tmdb_id: int, kind: str) -> Optional[str]:
         return None
 
 
-def _enrich_with_imdb(df: pd.DataFrame, kind: str) -> pd.DataFrame:
-    """Add 'imdb_rating' and 'metascore' columns by looking up each row's
-    IMDb id (via TMDB external_ids) and then its ratings (via imdbapi.dev).
+def _enrich_with_omdb(df: pd.DataFrame, kind: str) -> pd.DataFrame:
+    """Add 'omdb_rating' and 'metascore' columns by looking up each row's
+    IMDb id (via TMDB external_ids) and then its ratings (via OMDB).
     Lookups run in parallel; missing values become None."""
     if len(df) == 0:
-        df["imdb_rating"] = None
+        df["omdb_rating"] = None
         df["metascore"] = None
         return df
 
     tmdb_ids = df["tmdb_id"].tolist()
-    # TMDB tolerates parallelism; imdbapi.dev rate-limits hard (Cloudflare),
-    # so keep its pool small and rely on retry-with-backoff in get_ratings_by_id.
+    # TMDB tolerates parallelism; keep OMDB's pool smaller and let
+    # get_ratings_by_imdb_id fail fast per title rather than block the batch.
     with ThreadPoolExecutor(max_workers=10) as pool:
         imdb_ids = list(pool.map(lambda i: _get_imdb_id(i, kind), tmdb_ids))
     with ThreadPoolExecutor(max_workers=3) as pool:
         ratings = list(pool.map(
-            lambda tt: get_ratings_by_id(tt) if tt else
-                       {"user_rating": None, "metascore": None},
+            lambda tt: get_ratings_by_imdb_id(tt) if tt else
+                       {"omdb_rating": None, "metascore": None},
             imdb_ids))
 
     df = df.copy()
-    df["imdb_rating"] = [r.get("user_rating") for r in ratings]
-    df["metascore"]   = [r.get("metascore")   for r in ratings]
+    df["omdb_rating"] = [r.get("omdb_rating") for r in ratings]
+    df["metascore"]   = [r.get("metascore")    for r in ratings]
     return df
 
 
@@ -181,8 +181,8 @@ def get_movies(genre_ids: Optional[list[int]] = None, no_genre_ids: Optional[lis
         df["vote_average"] = df["vote_average"].round(1)
         df["release_date"] = pd.to_datetime(df["release_date"], errors="coerce").dt.year
         df = df.sort_values("vote_average", ascending=False)[:TOP_RESULTS]
-        df = _enrich_with_imdb(df, kind="movie")
-        df = df.sort_values("imdb_rating", ascending=False, na_position="last")
+        df = _enrich_with_omdb(df, kind="movie")
+        df = df.sort_values("omdb_rating", ascending=False, na_position="last")
         all_genres = set()
         for gs in df["genres"]:
             all_genres.update(gs)
@@ -224,8 +224,8 @@ def get_series(genre_ids: Optional[list[int]] = None, no_genre_ids: Optional[lis
         df["title"] = df["name"]
         df = df.drop(columns=["genre_ids", "first_air_date", "name"])
         df = df.sort_values("vote_average", ascending=False)[:TOP_RESULTS]
-        df = _enrich_with_imdb(df, kind="tv")
-        df = df.sort_values("imdb_rating", ascending=False, na_position="last")
+        df = _enrich_with_omdb(df, kind="tv")
+        df = df.sort_values("omdb_rating", ascending=False, na_position="last")
         all_genres = set()
         for gs in df["genres"]:
             all_genres.update(gs)

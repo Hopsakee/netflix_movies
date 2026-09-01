@@ -33,40 +33,45 @@ MAX_RATING = 10.0
 PICO_CSS = "https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css"
 PICO_SRI = "sha384-7P0NVe9LPDbUCAF+fH2R8Egwz1uqNH83Ns/bfJY0fN2XCDBMUI2S9gGzIOIRBKsA"
 
-# Warm Sparse Minimalist — dark, warm, spacious, sans-serif, sharp corners, terse copy.
-# Palette + design principles from the tasteID profile (Braincave d6.51.02): progressive
-# disclosure, strong hierarchy, trust the user. Colors match that profile's own fingerprint SVG.
-JF_BG = "#17151a"
-JF_SURFACE = "#221f1c"
-JF_SURFACE_ALT = "#2a2622"
-JF_TEXT = "#e8e4de"
-JF_MUTED = "#8a8680"
-JF_ACCENT = "#c8a46e"
-JF_ACCENT_INK = "#17151a"
-JF_BORDER = "rgba(200, 164, 110, 0.16)"
-JF_DANGER = "#e0796a"
+# Plain light theme, chosen for readability over any aesthetic — the earlier dark
+# restyle fought Pico's own component defaults (headings, table) instead of
+# replacing them, so contrast broke in places these overrides didn't reach.
+# Every text-bearing element below gets an explicit color rather than relying
+# on inheritance, specifically so that mistake can't repeat.
+JF_BG = "#f7f7f5"
+JF_SURFACE = "#ffffff"
+JF_SURFACE_ALT = "#f4f6f7"
+JF_TEXT = "#1a1a1a"
+JF_MUTED = "#5f6368"
+JF_ACCENT = "#2c3e50"
+JF_ACCENT_INK = "#ffffff"
+JF_BORDER = "#e2e2e2"
+JF_DANGER = "#c0392b"
 
 app, rt = fast_app(live=False, secret_key=SESSION_SECRET, hdrs=[
     Link(rel="stylesheet", href=PICO_CSS, integrity=PICO_SRI, crossorigin="anonymous"),
     Style(f"""
-        body {{ background: {JF_BG}; color: {JF_TEXT}; }}
-        a {{ color: {JF_ACCENT}; }}
-        * {{ border-radius: 0 !important; }}
+        html {{ color-scheme: light; }}
+        body {{ background: {JF_BG} !important; color: {JF_TEXT} !important; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
+        h1, h2, h3, h4 {{ color: {JF_TEXT} !important; font-weight: 700; }}
+        a {{ color: {JF_ACCENT} !important; }}
+        p {{ color: {JF_TEXT}; }}
         .container {{ max-width: 1200px; margin: 0 auto; padding: 0 1.5rem; }}
         .header {{ margin: 2.5rem 0 1.5rem; text-align: center; }}
-        .movie-table {{ width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: 0.92em; table-layout: fixed; background: {JF_SURFACE}; }}
-        .movie-table th.title-col {{ width: 30%; }}
-        .movie-table th.rating-col {{ width: 5%; }}
+        .movie-table {{ width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: 0.92em; table-layout: fixed;
+                        background: {JF_SURFACE}; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }}
+        .movie-table th.title-col {{ width: 28%; }}
         .movie-table th.year-col {{ width: 5%; }}
         .movie-table th.genre-col {{ width: 10%; }}
-        .movie-table th.desc-col {{ width: 50%; }}
-        .movie-table thead tr {{ background: {JF_BG}; color: {JF_ACCENT}; text-align: left; border-bottom: 2px solid {JF_ACCENT}; }}
-        .movie-table th, .movie-table td {{ padding: 14px 16px; }}
+        .movie-table th.desc-col {{ width: 44%; }}
+        .movie-table thead tr {{ background: {JF_ACCENT}; }}
+        .movie-table thead th {{ color: {JF_ACCENT_INK} !important; text-align: left; font-weight: 600; }}
+        .movie-table th, .movie-table td {{ padding: 12px 14px; color: {JF_TEXT}; }}
         .movie-table tbody tr {{ border-bottom: 1px solid {JF_BORDER}; }}
         .movie-table tbody tr:nth-of-type(even) {{ background-color: {JF_SURFACE_ALT}; }}
-        .movie-table tbody tr:last-of-type {{ border-bottom: 2px solid {JF_ACCENT}; }}
-        .movie-table tbody tr:hover {{ background-color: rgba(200, 164, 110, 0.08); cursor: pointer; }}
-        .genre-tag {{ display: inline-block; background: transparent; border: 1px solid {JF_BORDER}; color: {JF_MUTED}; padding: 3px 10px; font-size: 0.8em; margin: 2px; }}
+        .movie-table tbody tr:hover {{ background-color: #eef4f8; cursor: pointer; }}
+        .genre-tag {{ display: inline-block; background: {JF_SURFACE_ALT}; border: 1px solid {JF_BORDER}; color: {JF_TEXT};
+                      padding: 3px 10px; border-radius: 10px; font-size: 0.8em; margin: 2px; }}
     """)
 ])
 
@@ -110,15 +115,16 @@ def _error_panel(container_id: str) -> "FT":
 
 
 def create_table(df, show_meta: bool = True):
-    "Create a styled HTML table from the movies dataframe."
-    header_cells = [Th('Title'), Th('IMDb')]
+    "Create a styled HTML table from the movies dataframe. TMDB and OMDB ratings are shown as separate columns — never blended into one number, and never labelled 'IMDb' (that naming is what caused the confusion this replaced)."
+    header_cells = [Th('Title', cls='title-col'), Th('TMDB'), Th('OMDB')]
     if show_meta:
         header_cells.append(Th('Meta'))
-    header_cells += [Th('Year'), Th('Genres', cls='genre-col'), Th('Description', cls='desc-col')]
+    header_cells += [Th('Year', cls='year-col'), Th('Genres', cls='genre-col'), Th('Description', cls='desc-col')]
     thead = Thead(Tr(*header_cells))
 
     def _missing(v): return v is None or (isinstance(v, float) and pd.isna(v))
-    def fmt_imdb(v): return "—" if _missing(v) else f"⭐ {v}"
+    def fmt_tmdb(v): return "—" if _missing(v) else f"📺 {v}"
+    def fmt_omdb(v): return "—" if _missing(v) else f"⭐ {v}"
     def fmt_meta(v): return "—" if _missing(v) else f"🎯 {int(v)}"
 
     rows = []
@@ -128,15 +134,16 @@ def create_table(df, show_meta: bool = True):
             style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px;",
         )
         cells = [
-            Td(row['title'], style="font-weight: bold"),
-            Td(fmt_imdb(row.get('imdb_rating'))),
+            Td(row['title'], cls='title-col', style="font-weight: 600"),
+            Td(fmt_tmdb(row.get('vote_average'))),
+            Td(fmt_omdb(row.get('omdb_rating'))),
         ]
         if show_meta:
             cells.append(Td(fmt_meta(row.get('metascore'))))
         cells += [
-            Td(row['release_date']),
-            Td(genres, style="padding: 8px"),
-            Td(row['description'], style="white-space: normal; text-overflow: clip;"),
+            Td(row['release_date'], cls='year-col'),
+            Td(genres, cls='genre-col', style="padding: 8px"),
+            Td(row['description'], cls='desc-col', style="white-space: normal; text-overflow: clip;"),
         ]
         rows.append(Tr(*cells, _class="movie-row"))
     return Table(thead, Tbody(*rows), cls="movie-table")
@@ -250,7 +257,7 @@ def _render_list(route, container_id: str, list_title: str, fetch, genre_dict: d
         DivFullySpaced(
             Header(
                 H1(f"🎬 Top Rated {list_title.split()[-1]}", style="margin-bottom: 0.5rem"),
-                P(f"TMDB rating ≥ {mv}/10 · ratings via IMDb",
+                P(f"TMDB rating ≥ {mv}/10 · TMDB and OMDB ratings shown separately",
                   style=f"color: {JF_MUTED}; margin-top: 0"),
                 cls="header",
             ),
