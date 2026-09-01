@@ -56,15 +56,17 @@ app, rt = fast_app(live=False, secret_key=SESSION_SECRET, hdrs=[
         h1, h2, h3, h4 {{ color: {JF_TEXT} !important; font-weight: 700; }}
         a {{ color: {JF_ACCENT} !important; }}
         p {{ color: {JF_TEXT}; }}
-        .container {{ max-width: 1200px; margin: 0 auto; padding: 0 1.5rem; }}
+        .container {{ max-width: 1400px; margin: 0 auto; padding: 0 2rem; }}
         .header {{ margin: 2.5rem 0 1.5rem; text-align: center; }}
         .movie-table {{ width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: 0.92em; table-layout: fixed;
                         background: {JF_SURFACE}; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }}
-        .movie-table th.title-col {{ width: 28%; }}
-        .movie-table th.year-col {{ width: 5%; }}
-        .movie-table th.genre-col {{ width: 10%; }}
-        .movie-table th.desc-col {{ width: 44%; }}
-        .movie-table thead tr {{ background: {JF_ACCENT}; }}
+        .movie-table th.title-col {{ width: 24%; }}
+        .movie-table th.tmdb-col {{ width: 9%; }}
+        .movie-table th.omdb-col {{ width: 9%; }}
+        .movie-table th.year-col {{ width: 6%; }}
+        .movie-table th.genre-col {{ width: 12%; }}
+        .movie-table th.desc-col {{ width: 40%; }}
+        .movie-table thead tr {{ background: {JF_ACCENT} !important; }}
         .movie-table thead th {{ color: {JF_ACCENT_INK} !important; text-align: left; font-weight: 600; }}
         .movie-table th, .movie-table td {{ padding: 12px 14px; color: {JF_TEXT}; }}
         .movie-table tbody tr {{ border-bottom: 1px solid {JF_BORDER}; }}
@@ -114,18 +116,15 @@ def _error_panel(container_id: str) -> "FT":
     )
 
 
-def create_table(df, show_meta: bool = True):
-    "Create a styled HTML table from the movies dataframe. TMDB and OMDB ratings are shown as separate columns — never blended into one number, and never labelled 'IMDb' (that naming is what caused the confusion this replaced)."
-    header_cells = [Th('Title', cls='title-col'), Th('TMDB'), Th('OMDB')]
-    if show_meta:
-        header_cells.append(Th('Meta'))
-    header_cells += [Th('Year', cls='year-col'), Th('Genres', cls='genre-col'), Th('Description', cls='desc-col')]
+def create_table(df):
+    "Create a styled HTML table from the movies dataframe. TMDB and OMDB ratings are shown as separate columns — never blended into one number, and never labelled 'IMDb' (that naming is what caused the confusion this replaced). Metascore is fetched but not displayed — one rating column per source, no third derived column."
+    header_cells = [Th('Title', cls='title-col'), Th('TMDB', cls='tmdb-col'), Th('OMDB', cls='omdb-col'),
+                    Th('Year', cls='year-col'), Th('Genres', cls='genre-col'), Th('Description', cls='desc-col')]
     thead = Thead(Tr(*header_cells))
 
     def _missing(v): return v is None or (isinstance(v, float) and pd.isna(v))
-    def fmt_tmdb(v): return "—" if _missing(v) else f"📺 {v}"
+    def fmt_tmdb(v): return "—" if _missing(v) else f"{v}"
     def fmt_omdb(v): return "—" if _missing(v) else f"⭐ {v}"
-    def fmt_meta(v): return "—" if _missing(v) else f"🎯 {int(v)}"
 
     rows = []
     for _, row in df.iterrows():
@@ -135,12 +134,8 @@ def create_table(df, show_meta: bool = True):
         )
         cells = [
             Td(row['title'], cls='title-col', style="font-weight: 600"),
-            Td(fmt_tmdb(row.get('vote_average'))),
-            Td(fmt_omdb(row.get('omdb_rating'))),
-        ]
-        if show_meta:
-            cells.append(Td(fmt_meta(row.get('metascore'))))
-        cells += [
+            Td(fmt_tmdb(row.get('vote_average')), cls='tmdb-col'),
+            Td(fmt_omdb(row.get('omdb_rating')), cls='omdb-col'),
             Td(row['release_date'], cls='year-col'),
             Td(genres, cls='genre-col', style="padding: 8px"),
             Td(row['description'], cls='desc-col', style="white-space: normal; text-overflow: clip;"),
@@ -164,6 +159,7 @@ def index():
                        style=f"background-color: transparent; color: {JF_ACCENT}; border: 1px solid {JF_ACCENT}; padding: 12px 20px; cursor: pointer; font-size: 16px; width: auto;"),
                 style="display: flex; justify-content: center; gap: 16px; margin-top: 1rem;",
             ),
+            cls="container",
         ),
         id="index",
     )
@@ -175,9 +171,8 @@ def _genre_id_for_name(genre_dict: dict, name: str) -> Optional[int]:
 
 
 def _render_list(route, container_id: str, list_title: str, fetch, genre_dict: dict,
-                 min_vote: float, genre_ids: str, without_genres: str,
-                 show_meta: bool = True):
-    "Shared renderer for /movies and /series. `show_meta` toggles the Metascore column (movies only)."
+                 min_vote: float, genre_ids: str, without_genres: str):
+    "Shared renderer for /movies and /series."
     filter_on = _parse_id_list(genre_ids)
     filter_out = _parse_id_list(without_genres)
     filter_on = [gid for gid in filter_on if gid in genre_dict]
@@ -265,7 +260,8 @@ def _render_list(route, container_id: str, list_title: str, fetch, genre_dict: d
             Genres(False, sorted_excl_genres),
         ),
         Genres(True, sorted_incl_genres),
-        Div(create_table(df, show_meta=show_meta), cls="container"),
+        create_table(df),
+        cls="container",
         id=container_id,
     )
 
@@ -275,8 +271,7 @@ def series(min_vote: float = 7, genre_ids: Optional[str] = "", without_genres: O
     try:
         return _render_list(series, "series-container", "Netflix Series",
                             get_series, get_genres_series(),
-                            min_vote, genre_ids or "", without_genres or "",
-                            show_meta=False)
+                            min_vote, genre_ids or "", without_genres or "")
     except Exception:
         import logging
         logging.exception("series route failed")
@@ -288,8 +283,7 @@ def movies(min_vote: float = 7, genre_ids: Optional[str] = "", without_genres: O
     try:
         return _render_list(movies, "movies-container", "Netflix Movies",
                             get_movies, get_genres_movies(),
-                            min_vote, genre_ids or "", without_genres or "",
-                            show_meta=True)
+                            min_vote, genre_ids or "", without_genres or "")
     except Exception:
         import logging
         logging.exception("movies route failed")
