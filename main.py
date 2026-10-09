@@ -4,13 +4,12 @@ The app itself is unauthenticated by design: Authelia handles identity before th
 Do NOT add in-app auth here; that's a deployment-layer concern.
 """
 from typing import Optional
+import logging
 import math
 import os
 
 import pandas as pd
-from fastcore.all import *
 from fasthtml.common import *
-from monsterui.all import *
 from dotenv import load_dotenv
 
 from tmdb_data import get_movies, get_series, get_genres_movies, get_genres_series
@@ -29,53 +28,134 @@ if not SESSION_SECRET:
 MAX_GENRE_IDS = 20
 MIN_RATING = 0.0
 MAX_RATING = 10.0
+DEFAULT_MIN_VOTE = 7.0
+RATING_STEPS = [6.0, DEFAULT_MIN_VOTE, 7.5, 8.0, 8.5]
 
-PICO_CSS = "https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css"
-PICO_SRI = "sha384-7P0NVe9LPDbUCAF+fH2R8Egwz1uqNH83Ns/bfJY0fN2XCDBMUI2S9gGzIOIRBKsA"
+FONTS_CSS = ("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800"
+             "&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap")
 
-# Plain light theme, chosen for readability over any aesthetic — the earlier dark
-# restyle fought Pico's own component defaults (headings, table) instead of
-# replacing them, so contrast broke in places these overrides didn't reach.
-# Every text-bearing element below gets an explicit color rather than relying
-# on inheritance, specifically so that mistake can't repeat.
-JF_BG = "#f7f7f5"
-JF_SURFACE = "#ffffff"
-JF_SURFACE_ALT = "#f4f6f7"
-JF_TEXT = "#1a1a1a"
-JF_MUTED = "#5f6368"
-JF_ACCENT = "#2c3e50"
-JF_ACCENT_INK = "#ffffff"
-JF_BORDER = "#e2e2e2"
-JF_DANGER = "#c0392b"
+# Dark "screening room" theme with NO CSS framework underneath. The earlier
+# restyles broke because Pico's own component defaults (table, headings, its
+# automatic dark mode) kept overriding ours, so text ended up light-on-light.
+# Pico is now switched off (`pico=False`) and every element below is styled
+# from these tokens alone — nothing to fight. All text/ground pairs are ≥ 4.5:1.
+CSS = """
+:root {
+  --bg: #101114; --topbar: #14161a; --panel: #17191e; --surface: #191b20; --raised: #1e2026; --chip: #24272e;
+  --border: #2a2d34; --border-mid: #2e323a; --border-strong: #3a3e47;
+  --text: #f3f1ec; --text-strong: #f7f5f0; --control: #e4e5e9; --tag-text: #d5d7dd; --body: #c9ccd3;
+  --muted: #a9adb6; --faint: #8a8f99;
+  --accent: #f2b544; --accent-ink: #1a1406; --tmdb: #8fd6cc;
+  --out-bg: #3a1f22; --out-border: #e0707a; --out-text: #f6c9cd;
+  --display: 'Bricolage Grotesque', system-ui, sans-serif;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+html { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 var(--sans); }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.htmx-request #app, #app.htmx-request { opacity: .6; transition: opacity .15s; }
 
-app, rt = fast_app(live=False, secret_key=SESSION_SECRET, hdrs=[
-    Link(rel="stylesheet", href=PICO_CSS, integrity=PICO_SRI, crossorigin="anonymous"),
-    Style(f"""
-        html {{ color-scheme: light; }}
-        body {{ background: {JF_BG} !important; color: {JF_TEXT} !important; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
-        h1, h2, h3, h4 {{ color: {JF_TEXT} !important; font-weight: 700; }}
-        a {{ color: {JF_ACCENT} !important; }}
-        p {{ color: {JF_TEXT}; }}
-        .container {{ max-width: 1400px; margin: 0 auto; padding: 0 2rem; }}
-        .header {{ margin: 2.5rem 0 1.5rem; text-align: center; }}
-        .movie-table {{ width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: 0.92em; table-layout: fixed;
-                        background: {JF_SURFACE}; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }}
-        .movie-table th.title-col {{ width: 24%; }}
-        .movie-table th.tmdb-col {{ width: 9%; }}
-        .movie-table th.omdb-col {{ width: 9%; }}
-        .movie-table th.year-col {{ width: 6%; }}
-        .movie-table th.genre-col {{ width: 12%; }}
-        .movie-table th.desc-col {{ width: 40%; }}
-        .movie-table thead tr th {{ background: {JF_ACCENT} !important; background-color: {JF_ACCENT} !important;
-                                    color: {JF_ACCENT_INK} !important; text-align: left; font-weight: 600; }}
-        .movie-table th, .movie-table td {{ padding: 12px 14px; color: {JF_TEXT}; }}
-        .movie-table tbody tr {{ border-bottom: 1px solid {JF_BORDER}; }}
-        .movie-table tbody tr:nth-of-type(even) {{ background-color: {JF_SURFACE_ALT}; }}
-        .movie-table tbody tr:hover {{ background-color: #eef4f8; cursor: pointer; }}
-        .genre-tag {{ display: inline-block; background: {JF_SURFACE_ALT}; border: 1px solid {JF_BORDER}; color: {JF_TEXT};
-                      padding: 3px 10px; border-radius: 10px; font-size: 0.8em; margin: 2px; }}
-    """)
+.topbar { border-bottom: 1px solid var(--border); background: var(--topbar); }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+.topbar .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding-block: 18px; }
+.brand svg { color: var(--accent); }
+.brand { display: flex; align-items: center; gap: 12px; color: var(--text); text-decoration: none; cursor: pointer; }
+.brand-name { font: 800 26px/1 var(--display); letter-spacing: -.02em; }
+.brand-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.tabs { display: flex; padding: 4px; background: var(--raised); border: 1px solid var(--border-mid); border-radius: 999px; }
+.tab { border-radius: 999px; padding: 10px 22px; min-height: 44px; display: inline-flex; align-items: center;
+       font-weight: 600; font-size: 15px; color: var(--body); text-decoration: none; cursor: pointer; }
+.tab.on { background: var(--accent); color: var(--accent-ink); }
+
+main.wrap { padding-top: 40px; padding-bottom: 80px; }
+.intro { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 32px; margin-bottom: 28px; }
+h1 { margin: 0; font: 800 clamp(34px, 5vw, 52px)/1.05 var(--display); letter-spacing: -.03em; color: var(--text-strong); }
+.lede { margin: 10px 0 0; color: var(--muted); font-size: 15px; }
+.label { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.rating-picker { display: flex; flex-direction: column; gap: 8px; }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill { min-width: 52px; min-height: 44px; padding: 0 14px; border-radius: 10px; display: inline-flex; align-items: center;
+        justify-content: center; font: 600 15px var(--mono); background: var(--raised); color: var(--control);
+        border: 1px solid var(--border-mid); text-decoration: none; cursor: pointer; }
+.pill.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 20px 20px 22px; margin-bottom: 28px; }
+.panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 14px; }
+.panel h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--text); }
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.swatch { width: 12px; height: 12px; border-radius: 4px; }
+.swatch.in { background: var(--accent); }
+.swatch.out { background: var(--out-bg); border: 1.5px solid var(--out-border); }
+.reset { color: var(--accent); font-weight: 600; text-underline-offset: 3px; cursor: pointer; padding: 6px 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border-radius: 999px;
+        font-size: 14px; font-weight: 500; color: var(--control); border: 1.5px solid var(--border-strong);
+        text-decoration: none; cursor: pointer; }
+.chip:hover { border-color: var(--muted); }
+.chip.in { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.chip.out { background: var(--out-bg); color: var(--out-text); border-color: var(--out-border); }
+.chip.out .chip-name { text-decoration: line-through; }
+
+.meta-row { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; font-size: 14px; color: var(--muted); }
+.titles { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.title-card { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: flex-start; background: var(--surface);
+              border: 1px solid var(--border); border-radius: 16px; padding: 22px 24px; }
+.title-main { flex: 999 1 460px; min-width: 0; display: flex; gap: 20px; }
+.title-body { min-width: 0; }
+.rank { flex: 0 0 40px; font: 600 20px var(--mono); color: var(--faint); padding-top: 3px; }
+.title-card h3 { margin: 0; font: 600 23px/1.2 var(--display); letter-spacing: -.01em; color: var(--text-strong); }
+.year { font: 400 16px var(--sans); color: var(--muted); margin-left: 6px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 12px; }
+.tag { font-size: 12.5px; font-weight: 500; color: var(--tag-text); background: var(--chip); border-radius: 6px; padding: 3px 9px; }
+.desc { margin: 0; color: var(--body); font-size: 15.5px; line-height: 1.6; max-width: 68ch; }
+.scores { flex: 1 1 200px; display: flex; gap: 10px; justify-content: flex-end; }
+.score { flex: 1 1 0; max-width: 112px; background: var(--bg); border: 1px solid var(--border-mid); border-radius: 12px; padding: 10px 12px; }
+.score-src { font-size: 11.5px; font-weight: 600; letter-spacing: .08em; }
+.score-src.tmdb { color: var(--tmdb); }
+.score-src.omdb { color: var(--accent); }
+.score-val { font: 600 26px/1.2 var(--mono); color: var(--text-strong); }
+.score-val small { font-size: 13px; color: var(--faint); }
+.empty { padding: 56px 24px; text-align: center; border: 1px dashed var(--border-strong); border-radius: 16px; color: var(--body); }
+.empty strong { display: block; font: 600 22px var(--display); color: var(--text); }
+.footnote { margin: 40px 0 0; font-size: 13px; color: var(--faint); }
+
+.choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 32px; }
+.choice { display: block; padding: 28px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+          color: var(--text); text-decoration: none; cursor: pointer; }
+.choice:hover { border-color: var(--accent); }
+.choice strong { display: block; font: 600 26px/1.2 var(--display); color: var(--text-strong); }
+.choice span { display: block; margin-top: 8px; color: var(--muted); }
+.error h1 { color: var(--out-text); }
+
+@media (max-width: 560px) {
+  .title-card { padding: 18px; }
+  .title-main { gap: 12px; }
+  .rank { flex-basis: 28px; font-size: 16px; }
+  .scores { justify-content: flex-start; }
+}
+"""
+
+app, rt = fast_app(live=False, pico=False, secret_key=SESSION_SECRET, hdrs=[
+    Link(rel="preconnect", href="https://fonts.googleapis.com"),
+    Link(rel="preconnect", href="https://fonts.gstatic.com", crossorigin=""),
+    Link(rel="stylesheet", href=FONTS_CSS),
+    Style(CSS),
 ])
+
+FILM_ICON = NotStr(
+    '<svg aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/>'
+    '<path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></svg>')
+CHECK_ICON = NotStr(
+    '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>')
+CROSS_ICON = NotStr(
+    '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>')
 
 
 def _parse_id_list(raw: Optional[str]) -> list[int]:
@@ -102,192 +182,152 @@ def _parse_id_list(raw: Optional[str]) -> list[int]:
 def _validate_rating(min_vote: float) -> float:
     "Clamp the user-supplied minimum rating to a sane range. Reject NaN / inf."
     if not math.isfinite(min_vote):
-        return 7.0
+        return DEFAULT_MIN_VOTE
     return max(MIN_RATING, min(MAX_RATING, float(min_vote)))
 
 
-def _error_panel(container_id: str) -> "FT":
-    "Generic error panel — never includes exception detail."
-    return Div(
-        H1("Something went wrong", style=f"color: {JF_DANGER}"),
-        P("Could not load the list right now. Please try again in a moment.", style=f"color: {JF_MUTED}"),
-        cls="container",
-        id=container_id,
+def _nav(url: str, *c, **kw):
+    "An <a> that swaps the whole #app via htmx, but still works as a plain link."
+    return A(*c, href=url, hx_get=url, hx_target="#app", hx_swap="outerHTML", hx_push_url="true", **kw)
+
+
+def _shell(title: str, active: Optional[str], *content):
+    "Top bar + main column. Every route returns this whole block so htmx swaps and full loads look identical."
+    def tab(label, key, url):
+        return _nav(url, label, cls="tab on" if active == key else "tab",
+                    aria_current="page" if active == key else None)
+    return Title(title), Div(
+        Header(Div(
+            _nav(index.to(),
+                 FILM_ICON,
+                 Div(Div("JamesFlix", cls="brand-name"), Div("Top rated on Netflix NL", cls="brand-sub")),
+                 cls="brand"),
+            Nav(tab("Movies", "movies", movies.to(min_vote=DEFAULT_MIN_VOTE)),
+                tab("Series", "series", series.to(min_vote=DEFAULT_MIN_VOTE)),
+                cls="tabs", aria_label="List"),
+            cls="wrap"), cls="topbar"),
+        Main(*content, cls="wrap"),
+        id="app",
     )
 
 
-def create_table(df):
-    "Create a styled HTML table from the movies dataframe. TMDB and OMDB ratings are shown as separate columns — never blended into one number, and never labelled 'IMDb' (that naming is what caused the confusion this replaced). Metascore is fetched but not displayed — one rating column per source, no third derived column."
-    header_cells = [Th('Title', cls='title-col'), Th('TMDB', cls='tmdb-col'), Th('OMDB', cls='omdb-col'),
-                    Th('Year', cls='year-col'), Th('Genres', cls='genre-col'), Th('Description', cls='desc-col')]
-    thead = Thead(Tr(*header_cells))
+def _error_panel(kind: str):
+    "Generic error panel — never includes exception detail."
+    return _shell("JamesFlix", kind, Div(
+        H1("Something went wrong"),
+        P("Could not load the list right now. Please try again in a moment.", cls="lede"),
+        cls="error"))
 
-    def _missing(v): return v is None or (isinstance(v, float) and pd.isna(v))
-    def fmt_tmdb(v): return "—" if _missing(v) else f"{v}"
-    def fmt_omdb(v): return "—" if _missing(v) else f"⭐ {v}"
 
-    rows = []
-    for _, row in df.iterrows():
-        genres = Div(
-            *[Div(g, cls="genre-tag") for g in row['genres']],
-            style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px;",
-        )
-        cells = [
-            Td(row['title'], cls='title-col', style="font-weight: 600"),
-            Td(fmt_tmdb(row.get('vote_average')), cls='tmdb-col'),
-            Td(fmt_omdb(row.get('omdb_rating')), cls='omdb-col'),
-            Td(row['release_date'], cls='year-col'),
-            Td(genres, cls='genre-col', style="padding: 8px"),
-            Td(row['description'], cls='desc-col', style="white-space: normal; text-overflow: clip;"),
-        ]
-        rows.append(Tr(*cells, _class="movie-row"))
-    return Table(thead, Tbody(*rows), cls="movie-table")
+def _missing(v): return v is None or pd.isna(v)
+
+
+def _score(source: str, value):
+    "One rating box. TMDB and OMDB are always shown separately — never blended, never labelled 'IMDb'."
+    text = "—" if _missing(value) else f"{float(value):.1f}"
+    return Div(Div(source.upper(), cls=f"score-src {source}"),
+               Div(text, Small("/10") if text != "—" else "", cls="score-val"),
+               cls="score", aria_label=f"{source.upper()} rating {text}")
+
+
+def title_list(df):
+    "Ranked cards, one per title. Metascore is fetched but not displayed — one rating per source, no derived third."
+    if len(df) == 0:
+        return Div(Strong("Nothing matches these filters"), P("Lower the minimum rating or clear a genre."), cls="empty")
+    items = []
+    for i, (_, row) in enumerate(df.iterrows(), start=1):
+        year = row.get('release_date')
+        items.append(Li(
+            Div(Div(f"{i:02d}", cls="rank", aria_hidden="true"),
+                Div(H3(row['title'], Span("" if _missing(year) else str(int(year)), cls="year")),
+                    Div(*[Span(g, cls="tag") for g in row['genres']], cls="tags"),
+                    P(row['description'], cls="desc") if row.get('description') else None,
+                    cls="title-body"),
+                cls="title-main"),
+            Div(_score("tmdb", row.get('vote_average')), _score("omdb", row.get('omdb_rating')), cls="scores"),
+            cls="title-card"))
+    return Ol(*items, cls="titles")
 
 
 @rt
 def index():
-    return Titled(
-        "🎬 Netflix Movies and Series",
-        Div(
-            P("Kies welke lijst je wil zien", style=f"color: {JF_MUTED}; margin-top: 0"),
-            Div(
-                Button("Best movies with genre filter",
-                       hx_get=movies.to(min_vote=7), hx_target="#index", hx_swap="innerHTML", hx_push_url="true",
-                       style=f"background-color: {JF_ACCENT}; color: {JF_ACCENT_INK}; border: none; padding: 12px 20px; cursor: pointer; font-size: 16px; width: auto;"),
-                Button("Best series with genre filter",
-                       hx_get=series.to(min_vote=7), hx_target="#index", hx_swap="innerHTML", hx_push_url="true",
-                       style=f"background-color: transparent; color: {JF_ACCENT}; border: 1px solid {JF_ACCENT}; padding: 12px 20px; cursor: pointer; font-size: 16px; width: auto;"),
-                style="display: flex; justify-content: center; gap: 16px; margin-top: 1rem;",
-            ),
-            cls="container",
-        ),
-        id="index",
-    )
+    return _shell("JamesFlix", None,
+        H1("What are we watching?"),
+        P("The best-rated movies and series on Netflix NL, with TMDB and OMDB ratings side by side.", cls="lede"),
+        Div(_nav(movies.to(min_vote=DEFAULT_MIN_VOTE), Strong("Movies"), Span("Top rated films, filter by genre"), cls="choice"),
+            _nav(series.to(min_vote=DEFAULT_MIN_VOTE), Strong("Series"), Span("Top rated shows, filter by genre"), cls="choice"),
+            cls="choices"))
 
 
-def _genre_id_for_name(genre_dict: dict, name: str) -> Optional[int]:
-    "Reverse-lookup genre id from name. Returns None when not found (was StopIteration before)."
-    return next((k for k, v in genre_dict.items() if v == name), None)
-
-
-def _render_list(route, container_id: str, list_title: str, fetch, genre_dict: dict,
+def _render_list(route, kind: str, fetch, genre_dict: dict,
                  min_vote: float, genre_ids: str, without_genres: str):
     "Shared renderer for /movies and /series."
-    filter_on = _parse_id_list(genre_ids)
-    filter_out = _parse_id_list(without_genres)
-    filter_on = [gid for gid in filter_on if gid in genre_dict]
-    filter_out = [gid for gid in filter_out if gid in genre_dict]
+    filter_on = [gid for gid in _parse_id_list(genre_ids) if gid in genre_dict]
+    filter_out = [gid for gid in _parse_id_list(without_genres) if gid in genre_dict and gid not in filter_on]
     mv = _validate_rating(min_vote)
 
-    df, sr_filter = fetch(genre_ids=filter_on, no_genre_ids=filter_out, min_vote=mv)
+    df, _ = fetch(genre_ids=filter_on, no_genre_ids=filter_out, min_vote=mv)
 
-    # Use the validated `filter_on` list for the selected-state, NOT the raw `filt_genres` from sr_filter —
-    # stale ids from bookmarks must not poison the toggle-off URL builder below.
-    selected_genre_ids = sorted(filter_on)
-    sorted_incl_genres = sorted(sr_filter['incl_genres'])
-    sorted_excl_genres = sorted(sr_filter['excl_genres'])
+    # URLs are always rebuilt from the validated id lists, never from the raw query string —
+    # stale ids from old bookmarks must not leak into the next link.
+    def url(vote=mv, on=filter_on, out=filter_out):
+        return route.to(min_vote=vote, genre_ids=",".join(map(str, on)), without_genres=",".join(map(str, out)))
 
-    def FilterGenres(selected_ids: list):
-        all_ids = list(genre_dict.keys())
-        return Div(
-            P("Genres filtered on: "),
-            Div(
-                *[Div(genre_dict[gid],
-                      hx_get=route.to(
-                          min_vote=mv,
-                          genre_ids=(genre_ids + "," if genre_ids else "") + str(gid) if gid not in selected_ids
-                                    else ','.join([str(g) for g in selected_ids if g != gid]),
-                          without_genres=without_genres,
-                      ),
-                      hx_target=f"#{container_id}", hx_swap="innerHTML", hx_trigger="click",
-                      cls="genre-tag",
-                      style=(f"cursor: pointer; background-color: {JF_ACCENT}; color: {JF_ACCENT_INK}; border-color: {JF_ACCENT};"
-                             if gid in selected_ids else
-                             f"cursor: pointer; background-color: transparent; color: {JF_MUTED}; border-color: {JF_BORDER};"))
-                  for gid in sorted(all_ids, key=lambda x: genre_dict[x])],
-                style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px;",
-            ),
-        )
+    def chip(gid: int):
+        "Genre chips cycle: off → must have → hidden → off."
+        name = genre_dict[gid]
+        if gid in filter_on:
+            state, icon, nxt = "in", CHECK_ICON, url(on=[g for g in filter_on if g != gid], out=filter_out + [gid])
+            label = f"{name}: required. Click to hide it instead."
+        elif gid in filter_out:
+            state, icon, nxt = "out", CROSS_ICON, url(out=[g for g in filter_out if g != gid])
+            label = f"{name}: hidden. Click to clear."
+        else:
+            state, icon, nxt = "", "", url(on=filter_on + [gid])
+            label = f"{name}: click to require it."
+        return _nav(nxt, icon, Span(name, cls="chip-name"), cls=f"chip {state}".strip(), aria_label=label)
 
-    def Genres(include: bool, genres: list):
-        if include:
-            return Div(
-                P("Genres available: "),
-                Div(
-                    *[Div(g,
-                          hx_get=route.to(
-                              min_vote=mv,
-                              genre_ids=genre_ids,
-                              without_genres=(without_genres + "," if without_genres else "") + str(_genre_id_for_name(genre_dict, g))
-                                              if _genre_id_for_name(genre_dict, g) is not None else without_genres,
-                          ),
-                          hx_target=f"#{container_id}", hx_swap="innerHTML", hx_trigger="click",
-                          cls="genre-tag", style="cursor: pointer;")
-                      for g in genres if _genre_id_for_name(genre_dict, g) is not None],
-                    style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px;",
-                ),
-            )
-        gid_for = lambda g: _genre_id_for_name(genre_dict, g)
-        return Div(
-            P("Genres filtered out: "),
-            Div(
-                *[Div(g,
-                      hx_get=route.to(
-                          min_vote=mv,
-                          genre_ids=genre_ids,
-                          without_genres=','.join([wid for wid in (without_genres or "").split(',')
-                                                   if wid and gid_for(g) is not None and int(wid) != gid_for(g)]),
-                      ),
-                      hx_target=f"#{container_id}", hx_swap="innerHTML", hx_trigger="click",
-                      cls="genre-tag", style="cursor: pointer;")
-                  for g in genres if gid_for(g) is not None],
-                style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px;",
-            ),
-        )
-
-    return Div(
-        Div(Titled(list_title,
-                   hx_get=index.to(), hx_target="#index", hx_swap="innerHTML", hx_push_url="true",
-                   style="text-decoration: underline; cursor: pointer;")),
-        DivFullySpaced(
-            Header(
-                H1(f"🎬 Top Rated {list_title.split()[-1]}", style="margin-bottom: 0.5rem"),
-                P(f"TMDB rating ≥ {mv}/10 · TMDB and OMDB ratings shown separately",
-                  style=f"color: {JF_MUTED}; margin-top: 0"),
-                cls="header",
-            ),
-            FilterGenres(selected_genre_ids),
-            Genres(False, sorted_excl_genres),
-        ),
-        Genres(True, sorted_incl_genres),
-        create_table(df),
-        cls="container",
-        id=container_id,
+    rating_pills = [_nav(url(vote=r), f"{r:.1f}+", cls="pill on" if r == mv else "pill",
+                         aria_current="true" if r == mv else None) for r in RATING_STEPS]
+    return _shell(f"JamesFlix · {kind.title()}", kind,
+        Div(Div(H1(f"Best {kind} right now"),
+                P("TMDB and OMDB ratings are shown side by side — never blended.", cls="lede")),
+            Div(Span("Minimum TMDB rating", cls="label"), Div(*rating_pills, cls="pills"), cls="rating-picker"),
+            cls="intro"),
+        Section(
+            Div(H2("Genres"),
+                Div(Span(Span(cls="swatch in"), "Click once: must have"),
+                    Span(Span(cls="swatch out"), "Twice: hide"),
+                    Span("Third click clears"),
+                    _nav(url(on=[], out=[]), "Reset genres", cls="reset") if (filter_on or filter_out) else None,
+                    cls="legend"),
+                cls="panel-head"),
+            Div(*[chip(gid) for gid in sorted(genre_dict, key=genre_dict.get)], cls="chips"),
+            cls="panel", aria_label="Genre filter"),
+        Div(Span(f"{len(df)} {kind}"), Span("Sorted by OMDB rating"), cls="meta-row"),
+        title_list(df),
+        P("Data from TMDB (availability on Netflix NL) and OMDB. Lists refresh every 30 minutes.", cls="footnote"),
     )
 
 
 @rt
-def series(min_vote: float = 7, genre_ids: Optional[str] = "", without_genres: Optional[str] = ""):
+def series(min_vote: float = DEFAULT_MIN_VOTE, genre_ids: Optional[str] = "", without_genres: Optional[str] = ""):
     try:
-        return _render_list(series, "series-container", "Netflix Series",
-                            get_series, get_genres_series(),
+        return _render_list(series, "series", get_series, get_genres_series(),
                             min_vote, genre_ids or "", without_genres or "")
     except Exception:
-        import logging
         logging.exception("series route failed")
-        return _error_panel("series-container")
+        return _error_panel("series")
 
 
 @rt
-def movies(min_vote: float = 7, genre_ids: Optional[str] = "", without_genres: Optional[str] = ""):
+def movies(min_vote: float = DEFAULT_MIN_VOTE, genre_ids: Optional[str] = "", without_genres: Optional[str] = ""):
     try:
-        return _render_list(movies, "movies-container", "Netflix Movies",
-                            get_movies, get_genres_movies(),
+        return _render_list(movies, "movies", get_movies, get_genres_movies(),
                             min_vote, genre_ids or "", without_genres or "")
     except Exception:
-        import logging
         logging.exception("movies route failed")
-        return _error_panel("movies-container")
+        return _error_panel("movies")
 
 
 if __name__ == "__main__":
